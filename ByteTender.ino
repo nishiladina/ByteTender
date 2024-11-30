@@ -27,3 +27,21 @@ void setup() {
 
 void loop() {
 }
+
+void dispenseDrink() {
+  raiseDispenserPaddle();
+  delay(2000);
+  lowerDispenserPaddle();
+}
+
+void raiseDispenserPaddle() {
+  long destination[] = {2000, 2000}; // no idea what these numbers need to be
+  zControl.moveTo(destination);
+  zControl.runSpeedToPosition(); // blocking
+}
+
+void lowerDispenserPaddle() {
+  long destination[] = {0, 0};
+  zControl.moveTo(destination);
+  zControl.runSpeedToPosition(); // blocking
+}
