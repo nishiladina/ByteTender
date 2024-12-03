@@ -16,16 +16,13 @@ AccelStepper z2Stepper = AccelStepper(1, Z2STEP, Z2DIR);
 
 MultiStepper zControl = MultiStepper();
 
-void setup() {
+void motorSetup() {
   xStepper.setMaxSpeed(1000);
   z1Stepper.setMaxSpeed(200);
   z2Stepper.setMaxSpeed(200);
 
   zControl.addStepper(z1Stepper);
   zControl.addStepper(z2Stepper);
-}
-
-void loop() {
 }
 
 void dispenseDrink() {
