@@ -1,12 +1,14 @@
-bool needToLower = false; // CHANGE IF NEEDED
+// https://cloud.openthings.io/forward/v1/OT4fa175d0cfd69f1457b8dba3d4d175/
+
+bool needToLower = false; // change to true if uploading code after manually resetting paddle, false if uploading with paddle already lowered
 
 #include "WiFiHeaders.h"
-
 using namespace std;
-
 OTF::OpenThingsFramework *otf;
 
 #include "MotorHeaders.h"
+
+#include "Settings.h"
 
 Adafruit_NeoPixel ring = Adafruit_NeoPixel(16, NEOP_PIN, NEO_GRB + NEO_KHZ800); // 16 LEDs
 
@@ -19,16 +21,8 @@ bool isBusy = false;
 void on_homepage(const OTF::Request &req, OTF::Response &res) {
   res.writeStatus(200, "OK");
   res.writeHeader(F("content-type"), F("text/html")); 
-  res.writeBodyChunk(FPSTR(ui_html)); // return the raw string defined in html_index.h
+  res.writeBodyChunk(FPSTR(ui_html)); // return the raw string defined in ui_html.h
 }
-
-
-void on_stylesheet(const OTF::Request &req, OTF::Response &res) {
-  res.writeStatus(200, "OK");
-  res.writeHeader(F("content-type"), F("text/css"));
-  res.writeBodyChunk(FPSTR(ui_css)); // Return the raw CSS string
-}
-
 
 void on_get(const OTF::Request &req, OTF::Response &res) {
   char json[500];
@@ -46,25 +40,27 @@ void on_set(const OTF::Request &req, OTF::Response &res) {
     res.writeHeader(F("content-type"), F("text/html"));
     res.writeBodyChunk(F("{\"result\": \"missing type and/or value parameters\"}"));
   } else {
-    Serial.printf("type: %s, value: %s\n", type, value);
-    Serial.printf("compare: %d\n", strcmp(type, "drink"));
     if (strcmp(type, "drink") == 0) {
         int drinkType = stoi(value);
-        Serial.printf("drinkType: %d, value: %s\n", drinkType, value);
         // 1: Grinch Punch
-        // 2:
-        // 3:
-        // 4: 
+        // 2: Shirley Temple
+        // 3: Sprite
+        // 4: Ginger Ale
         if(drinkType == 1) {
-          Serial.println("making grinch punch");
+          Serial.println("making Grinch Punch");
           makeGrinchPunch();
         } else if (drinkType == 2) {
-          Serial.println("making drink 2");
-          // makeShirleyTemple();
+          Serial.println("making Shirley Temple");
+          makeShirleyTemple();
         } else if (drinkType == 3) {
-          Serial.println("making drink 3");
+          Serial.println("making Sprite");
+          makeSprite();
         } else if (drinkType == 4) {
-          Serial.println("making drink 4");
+          Serial.println("making Ginger Ale");
+          makeGingerAle();
+        } else if (drinkType == 5) {
+          Serial.println("making Hawaiian Punch");
+          makeHawaiianPunch();
         }
     }
     res.writeStatus(200, "OK");
@@ -78,12 +74,9 @@ void setup(void){
 
   ring.begin();
   ring.setBrightness(32); // set a low brightness
-  ring.clear(); // clear all pixels
-  ring.show();
+  wipe(ring.Color(255, 0, 0)); // red while setting up
 
-  
-
-  // Start WiFi
+  // start WiFi
   WiFi.mode(WIFI_STA);
   WiFi.begin(WIFI_SSID, WIFI_PASSWORD);
   Serial.print("Connecting to WiFi network...");
@@ -94,15 +87,14 @@ void setup(void){
   Serial.print("\nConnected. Local IP: ");
   Serial.println(WiFi.localIP());
 
-  // Create OTC Object
+  // create OTC Object
   otf = new OTF::OpenThingsFramework(LOCAL_SERVER_PORT, CLOUD_HOST, CLOUD_PORT, CLOUD_TOKEN, false);
   otf->localServerBegin();  // start local server
 
-  // Set up server endpoints (APIs)
+  // set up server endpoints (APIs)
   otf->on(F("/"), on_homepage);
   otf->on(F("/get"), on_get);
   otf->on(F("/set"), on_set);
-  otf->on(F("/styles.css"), on_stylesheet);
 
   motorSetup();
 }
@@ -112,7 +104,7 @@ void loop(void){
 }
 
 void motorSetup() {
-  Serial.println("beginning setup");
+  Serial.println("beginning motor setup");
 
   pinMode(TOP_BUTTON, INPUT_PULLUP);
   pinMode(MIDDLE_BUTTON, INPUT_PULLUP);
@@ -126,16 +118,16 @@ void motorSetup() {
   xAxisHoming();
   Serial.println("done resetting x axis");
 
-  rainbowCycle();
+  wipe(ring.Color(0, 255, 0)); // green to indicate done setting up
 }
 
 void xAxisHoming() {
   xStepper.setCurrentPosition(0);
-  xStepper.setMaxSpeed(1600);
+  xStepper.setMaxSpeed(2 * STEPS_PER_ROTATION);
   xStepper.setAcceleration(1000);
   xStepper.move(20000);
 
-  while (digitalRead(CONTACT_SWITCH) == HIGH) {
+  while (digitalRead(CONTACT_SWITCH) == HIGH) { // while switch not pressed 
     xStepper.run();
   }
   
@@ -143,13 +135,12 @@ void xAxisHoming() {
 
   xStepper.move(-50);
   xStepper.setSpeed(-100);
-  Serial.println(xStepper.distanceToGo());
   while(xStepper.distanceToGo() != 0) {
     xStepper.runSpeed();
   }
 
   xStepper.setCurrentPosition(0);
-  xStepper.setMaxSpeed(3200);
+  xStepper.setMaxSpeed(4 * STEPS_PER_ROTATION);
   xStepper.setAcceleration(1000);
   
 }
@@ -160,16 +151,16 @@ void zAxisHoming() {
   z2Stepper.setCurrentPosition(0);
   z2Stepper.setMaxSpeed(3 * STEPS_PER_ROTATION);
   if(needToLower) {
-    lowerPaddle();
+    lowerPaddle(LOWERED_POSITION);
   } else {
     z1Stepper.setCurrentPosition(LOWERED_POSITION);
     z2Stepper.setCurrentPosition(LOWERED_POSITION);
   }
 }
-void lowerPaddle() {
-  z1Stepper.moveTo(LOWERED_POSITION);
+void lowerPaddle(int amt) {
+  z1Stepper.moveTo(amt);
   z1Stepper.setSpeed(3 * STEPS_PER_ROTATION); // 3 rotations per second counter clockwise
-  z2Stepper.moveTo(LOWERED_POSITION);
+  z2Stepper.moveTo(amt);
   z2Stepper.setSpeed(3 * STEPS_PER_ROTATION);
 
   while(z2Stepper.distanceToGo() != 0) {
@@ -178,10 +169,10 @@ void lowerPaddle() {
   }
 }
 
-void raisePaddle() {
-  z1Stepper.moveTo(RAISED_POSITION);
+void raisePaddle(int amt) {
+  z1Stepper.moveTo(amt);
   z1Stepper.setSpeed(-2 * STEPS_PER_ROTATION); // 2 rotations per second clockwise
-  z2Stepper.moveTo(RAISED_POSITION);
+  z2Stepper.moveTo(amt);
   z2Stepper.setSpeed(-2 * STEPS_PER_ROTATION);
 
   while(z2Stepper.distanceToGo() != 0) {
@@ -191,117 +182,94 @@ void raisePaddle() {
 }
 
 void dispenseDrink() {
-  raisePaddle();
+  raisePaddle(RAISED_POSITION);
   delay(1000);
-  lowerPaddle();
+  lowerPaddle(LOWERED_POSITION);
 }
 
-void timeDispenseDrink(int d) {
-  raisePaddle();
+void dispenseFreeFlow(int d) {
+  raisePaddle(FREE_FLOW_RAISED_POSITION);
   delay(d);
-  lowerPaddle();
+  lowerPaddle(LOWERED_POSITION);
 }
 
-void moveToDrink1() { // rightmost drink
-  Serial.println("moving to 1");
-  xStepper.moveTo(-750);
+void moveToDrink(int drink) {
+  xStepper.moveTo(drink);
   while(xStepper.distanceToGo() != 0) {
     xStepper.run();
   }
-  Serial.println("done moving to 1");
-}
-void moveToDrink2() {
-  Serial.println("moving to 2");
-  xStepper.moveTo(-4000);
-  while(xStepper.distanceToGo() != 0) {
-    xStepper.run();
-  }
-  Serial.println("done moving to 2");
-}
-void moveToDrink3() {
-  Serial.println("moving to 3");
-  xStepper.moveTo(-7250);
-  while(xStepper.distanceToGo() != 0) {
-    xStepper.run();
-  }
-  Serial.println("done moving to 3");
-}
-void moveToDrink4() { // leftmost drink
-  Serial.println("moving to 4");
-  xStepper.moveTo(-10700);
-  while(xStepper.distanceToGo() != 0) {
-    xStepper.run();
-  }
-  Serial.println("done moving to 4");
 }
 
-void makeGrinchPunch() {
+void makeGrinchPunch() { // Sprite and Hawaiian Punch
+  beginDrink();
+  moveToDrink(SPRITE);
+  delay(100);
+  dispenseFreeFlow(2000);
+  delay(100);
+  moveToDrink(HAWAIIAN_PUNCH);
+  delay(100);
+  dispenseFreeFlow(2000);
+  delay(100);
+  endDrink();
+}
+
+void makeShirleyTemple() { // Ginger Ale and Syrup
+  beginDrink();
+  moveToDrink(GINGER_ALE);
+  delay(100);
+  dispenseFreeFlow(8000);
+  delay(100);
+  moveToDrink(SYRUP);
+  delay(100);
+  dispenseDrink();
+  delay(100);
+  endDrink();
+}
+
+void makeSprite() {
+  beginDrink();
+  moveToDrink(SPRITE);
+  delay(100);
+  dispenseFreeFlow(5000);
+  delay(100);
+  endDrink();
+}
+
+void makeGingerAle() {
+  beginDrink();
+  moveToDrink(GINGER_ALE);
+  delay(100);
+  dispenseFreeFlow(5000);
+  delay(100);
+  endDrink();
+}
+
+void makeHawaiianPunch() {
+  beginDrink();
+  moveToDrink(HAWAIIAN_PUNCH);
+  delay(100);
+  dispenseFreeFlow(5000);
+  delay(100);
+  endDrink();
+}
+
+void beginDrink() {
   isBusy = true;
-  moveToDrink4();
-  delay(100);
-  dispenseDrink();
-  delay(100);
-  moveToDrink3();
-  delay(100);
-  dispenseDrink();
-  delay(100);
+  wipe(ring.Color(255, 0, 0));
+}
+
+void endDrink() {
+  wipe(ring.Color(0, 255, 0));
   isBusy = false;
 }
 
-void makeShirleyTemple() {
-  isBusy = true;
-  moveToDrink1();
-  delay(100);
-  dispenseDrink();
-  delay(100);
-  moveToDrink2();
-  delay(100);
-  dispenseDrink();
-  delay(100);
-  isBusy = false;
-}
 
 void wipe(unsigned long color) {
+  ring.clear();
+  ring.show();
   for(int i=0;i<ring.numPixels();i++) {
     ring.setPixelColor(i, color);
     delay(100);
-  }
-  ring.show();
-}
-
-void rainbow() {
-  int i, j;
-  for(j=0; j<256; j++) {
-    for(i=0; i<ring.numPixels(); i++) {
-      ring.setPixelColor(i, Wheel((i+j) & 255));
-    }
     ring.show();
-    delay(20);
   }
-}
-
-void rainbowCycle() {
-  int i, j;
-  for(j=0; j<256*3; j++) { // 3 cycles of all colors on wheel
-    for(i=0; i< ring.numPixels(); i++) {
-      ring.setPixelColor(i, Wheel(((i * 256 / ring.numPixels()) + j) & 255));
-    }
-    ring.show();
-    delay(20);
-  }
-}
-
-// Input a value 0 to 255 to get a color value.
-// The colours are a transition r - g - b - back to r.
-uint32_t Wheel(byte WheelPos) {
-  WheelPos = 255 - WheelPos;
-  if(WheelPos < 85) {
-    return ring.Color(255 - WheelPos * 3, 0, WheelPos * 3);
-  }
-  if(WheelPos < 170) {
-    WheelPos -= 85;
-    return ring.Color(0, WheelPos * 3, 255 - WheelPos * 3);
-  }
-  WheelPos -= 170;
-  return ring.Color(WheelPos * 3, 255 - WheelPos * 3, 0);
 }
